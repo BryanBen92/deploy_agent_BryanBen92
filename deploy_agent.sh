@@ -118,3 +118,83 @@ on_interrupt() {
 enable_traps()  { trap 'on_interrupt SIGINT' INT; trap 'on_interrupt SIGTSTP' TSTP; }
 disable_traps() { trap - INT TSTP; }
 
+restore_backup() {
+    if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" && -n "$TARGET_DIR" ]]; then
+        if mv "$BACKUP_DIR" "$TARGET_DIR"; then
+            msg "Restored your previous '$TARGET_DIR'."
+        else
+            err "Could not restore backup; it is still at '$BACKUP_DIR'."
+        fi
+    fi
+    BACKUP_DIR=""
+}
+
+rollback() {
+    if (( OWNED )) && [[ -d "$TARGET_DIR" ]]; then
+        rm -rf "$TARGET_DIR" && msg "Removed incomplete '$TARGET_DIR'."
+    fi
+    OWNED=0
+    restore_backup
+}
+
+on_interrupt() {
+    local sig="$1" zipname
+    trap '' INT TSTP
+    echo
+    echo "!! Deployment interrupted by $sig."
+
+    if (( OWNED )) && [[ -d "$TARGET_DIR" ]]; then
+        zipname="${TARGET_DIR}_archive.zip"
+        rm -f "$zipname"
+        if zip -rq "$zipname" "$TARGET_DIR"; then
+            echo "   Archived the incomplete project to: $zipname"
+            if rm -rf "$TARGET_DIR"; then
+                echo "   Removed the incomplete directory: $TARGET_DIR"
+            else
+                echo "   Could not remove $TARGET_DIR (check permissions)." >&2
+            fi
+        else
+            echo "   zip failed, so '$TARGET_DIR' was kept to avoid losing work." >&2
+        fi
+    else
+        echo "   Nothing had been created yet, so there is nothing to archive."
+    fi
+
+    OWNED=0
+    restore_backup
+    echo "   Session closed cleanly."
+    exit 130
+}
+
+enable_traps()  { trap 'on_interrupt SIGINT' INT; trap 'on_interrupt SIGTSTP' TSTP; }
+disable_traps() { trap - INT TSTP; }
+
+preflight() {
+    local tool f ok=1
+    msg "Running pre-flight checks..."
+    for tool in python3 zip; do
+        if command -v "$tool" >/dev/null 2>&1; then
+            msg "  [ok] $tool found"
+        else
+            err "$tool is not installed or not on your PATH. Install it and try again."
+            ok=0
+        fi
+    done
+    (( ok )) || return 1
+
+    if ! python3 --version >/dev/null 2>&1; then
+        err "python3 was found but 'python3 --version' failed."
+        return 1
+    fi
+    msg "  [ok] $(python3 --version 2>&1)"
+
+    for f in attendance_checker.py assets.csv config.json; do
+        if [[ ! -f "$TEMPLATES_DIR/$f" ]]; then
+            err "Missing template: $TEMPLATES_DIR/$f"
+            return 1
+        fi
+    done
+    msg "  [ok] templates found"
+    return 0
+}
+
