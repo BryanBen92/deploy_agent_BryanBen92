@@ -405,3 +405,38 @@ archive_logs() {
     (( archived > 0 ))
 }
 
+show_menu() {
+    msg ""
+    msg "=============================================="
+    msg "  deploy_agent: Attendance Tracker Bootstrapper"
+    msg "=============================================="
+    msg "  1) Deploy a new project"
+    msg "  2) Run the application on a deployed project"
+    msg "  3) Archive logs of a deployed project"
+    msg "  4) Exit"
+}
+
+main() {
+    local choice
+    case "${1:-}" in
+        deploy)  deploy_project;  exit $? ;;
+        run)     run_feature;     exit $? ;;
+        archive) archive_logs;    exit $? ;;
+        "")      ;;
+        *) err "Unknown option '$1'. Use: deploy | run | archive (or no argument for the menu)."; exit 2 ;;
+    esac
+
+    while true; do
+        show_menu
+        ask choice "Select an option [1-4]: " || { echo; exit 0; }
+        case "$choice" in
+            1) deploy_project ;;
+            2) run_feature ;;
+            3) archive_logs ;;
+            4) msg "Goodbye."; exit 0 ;;
+            *) msg "Please enter 1, 2, 3 or 4." ;;
+        esac
+    done
+}
+
+main "$@"
