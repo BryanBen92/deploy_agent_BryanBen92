@@ -264,3 +264,74 @@ configure_thresholds() {
     return 0
 }
 
+build_project() {
+    step mkdir -p "$TARGET_DIR/Helpers" "$TARGET_DIR/reports" || return 1
+    step cp "$TEMPLATES_DIR/attendance_checker.py" "$TARGET_DIR/attendance_checker.py" || return 1
+    step cp "$TEMPLATES_DIR/config.json" "$TARGET_DIR/Helpers/config.json" || return 1
+    build_roster || return 1
+
+    step chmod +x "$TARGET_DIR/attendance_checker.py" || return 1
+    step chmod 600 "$TARGET_DIR/Helpers/config.json" || return 1
+    msg ""
+    msg "Permissions set:"
+    ls -l "$TARGET_DIR/attendance_checker.py" "$TARGET_DIR/Helpers/config.json" |
+        awk '{print "  " $1 "  " $NF}'
+
+    configure_thresholds || return 1
+    return 0
+}
+
+deploy_project() {
+    local name rc
+    TARGET_DIR=""; OWNED=0; BACKUP_DIR=""
+
+    enable_traps
+
+    if ! preflight; then disable_traps; return 1; fi
+
+    msg ""
+    while true; do
+        ask name "Project name (creates ${PREFIX}<name>): " || { disable_traps; return 1; }
+        if [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]]; then break; fi
+        msg "  Use letters, digits, '_' or '-' only (no spaces or empty names)."
+    done
+    TARGET_DIR="${PREFIX}${name}"
+
+    if [[ -e "$TARGET_DIR" ]]; then
+        err "'$TARGET_DIR' already exists."
+        if ask_yes_no "Overwrite it? Your old copy is kept until the new deploy succeeds [y/N]: "; then
+            BACKUP_DIR="${TARGET_DIR}.bak.$$"
+            if ! mv "$TARGET_DIR" "$BACKUP_DIR"; then
+                err "Could not move the existing project aside (permission denied?). Aborting."
+                BACKUP_DIR=""; TARGET_DIR=""; disable_traps; return 1
+            fi
+        else
+            msg "Aborted. Nothing was changed."
+            TARGET_DIR=""; disable_traps; return 1
+        fi
+    fi
+
+    OWNED=1
+    if ! build_project; then
+        err "Deployment failed. Rolling back."
+        rollback
+        disable_traps
+        return 1
+    fi
+
+    if [[ -n "$BACKUP_DIR" ]]; then rm -rf "$BACKUP_DIR"; BACKUP_DIR=""; fi
+    OWNED=0
+    disable_traps
+
+    msg ""
+    msg "Deployment of '$TARGET_DIR' complete. Verifying by starting the app..."
+    run_app "$TARGET_DIR"; rc=$?
+    if (( rc == 0 || rc == 130 )); then
+        msg "Verification passed: the application started and read its roster and config."
+    else
+        err "The application exited with code $rc. Check the messages above."
+        return 1
+    fi
+    return 0
+}
+
