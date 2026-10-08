@@ -374,3 +374,34 @@ run_feature() {
     run_app "$SELECTED"
 }
 
+archive_logs() {
+    local dir ts kind src dest_dir dest n archived=0 skipped=0
+    choose_project || return 1
+    dir="$SELECTED"
+    ts="$(date +%Y%m%d_%H%M%S)"
+
+    msg "Archiving logs from '$dir' (timestamp $ts)..."
+    for kind in attendance absent; do
+        src="$dir/reports/${kind}.log"
+        dest_dir="$dir/archives/${kind}"
+        dest="$dest_dir/${kind}_${ts}.log"
+        if [[ ! -f "$src" ]]; then
+            msg "  - ${kind}.log not found (nothing to archive; skipped)"
+            skipped=$((skipped + 1))
+            continue
+        fi
+        n=1
+        while [[ -e "$dest" ]]; do
+            dest="$dest_dir/${kind}_${ts}_${n}.log"; n=$((n + 1))
+        done
+        if mkdir -p "$dest_dir" && cp "$src" "$dest"; then
+            msg "  + archived ${kind}.log -> $dest"
+            archived=$((archived + 1))
+        else
+            err "Could not archive $src (permission denied?)"
+        fi
+    done
+    msg "Done: $archived archived, $skipped skipped."
+    (( archived > 0 ))
+}
+
