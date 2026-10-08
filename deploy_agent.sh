@@ -335,3 +335,42 @@ deploy_project() {
     return 0
 }
 
+run_app() {
+    local dir="$1"
+    if [[ ! -f "$dir/attendance_checker.py" ]]; then
+        err "'$dir' does not look like a deployed project."
+        return 1
+    fi
+    ( cd "$dir" && python3 attendance_checker.py )
+}
+
+choose_project() {
+    local dirs=() d i pick
+    for d in "${PREFIX}"*; do
+        [[ -d "$d" && "$d" != *.bak.* ]] && dirs+=("$d")
+    done
+    if (( ${#dirs[@]} == 0 )); then
+        err "No deployed projects found here. Run Deploy (option 1) first."
+        return 1
+    fi
+    msg "Deployed projects:"
+    for i in "${!dirs[@]}"; do msg "  $((i + 1))) ${dirs[$i]}"; done
+    while true; do
+        ask pick "Choose a number or type the project name: " || return 1
+        if [[ "$pick" =~ ^[0-9]+$ ]] && (( pick >= 1 && pick <= ${#dirs[@]} )); then
+            SELECTED="${dirs[$((pick - 1))]}"; return 0
+        fi
+        for d in "${dirs[@]}"; do
+            if [[ "$pick" == "$d" || "${PREFIX}${pick}" == "$d" ]]; then
+                SELECTED="$d"; return 0
+            fi
+        done
+        msg "  Not recognised. Try again."
+    done
+}
+
+run_feature() {
+    choose_project || return 1
+    run_app "$SELECTED"
+}
+
