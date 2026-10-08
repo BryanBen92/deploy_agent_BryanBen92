@@ -198,3 +198,49 @@ preflight() {
     return 0
 }
 
+generate_roster() {
+    local n="$1" file="$2" i f l email
+    local FIRST=(Alice Bob Carol David Emma Frank Grace Henry Irene James)
+    local LAST=(Johnson Smith Williams Brown Jones Garcia Miller Davis Mugabo Uwase)
+    {
+        echo "Email,Names,Attendance Count,Absence Count"
+        for ((i = 0; i < n; i++)); do
+            f="${FIRST[i % 10]}"
+            l="${LAST[(i / 10 + i % 10) % 10]}"
+            email="$(printf '%s.%s@example.com' "$f" "$l" | tr 'A-Z' 'a-z')"
+            echo "$email,$f $l,0,0"
+        done
+    } > "$file"
+}
+
+build_roster() {
+    local choice n available
+    local assets="$TARGET_DIR/Helpers/assets.csv"
+    local config="$TARGET_DIR/Helpers/config.json"
+
+    while true; do
+        msg ""
+        msg "How should the student roster be built?"
+        msg "  A) Copy rows from templates/assets.csv (4 prior sessions each)"
+        msg "  B) Generate a fresh roster (all counts start at 0)"
+        ask choice "Choose A or B: " || return 1
+        case "$choice" in
+            a|A)
+                available="$(awk 'END{print NR-1}' "$TEMPLATES_DIR/assets.csv")"
+                ask_int n "How many students to copy (1-$available)? " 1 "$available" || return 1
+                step head -n "$((n + 1))" "$TEMPLATES_DIR/assets.csv" > "$assets" || return 1
+                msg "  Copied $n student(s). total_sessions stays at 5 (4 prior + today)."
+                return 0
+                ;;
+            b|B)
+                ask_int n "How many students to generate (1-100)? " 1 100 || return 1
+                generate_roster "$n" "$assets" || { err "Could not write $assets"; return 1; }
+                step sed_inplace 's/("total_sessions": *)[0-9]+/\11/' "$config" || return 1
+                msg "  Generated $n student(s). total_sessions set to 1 (first session)."
+                return 0
+                ;;
+            *) msg "  Please enter A or B." ;;
+        esac
+    done
+}
+
