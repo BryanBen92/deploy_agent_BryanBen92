@@ -244,3 +244,23 @@ build_roster() {
     done
 }
 
+configure_thresholds() {
+    local config="$TARGET_DIR/Helpers/config.json" w f
+    msg ""
+    ask_yes_no "Update the attendance alert thresholds? [y/N]: " || {
+        msg "  Keeping thresholds from the template (warning 75, failure 50)."
+        return 0
+    }
+    while true; do
+        ask_threshold w "  New warning threshold [75]: " 75 || return 1
+        ask_threshold f "  New failure threshold [50]: " 50 || return 1
+        if (( w > f )); then break; fi
+        msg "  The warning threshold ($w) must be higher than the failure threshold ($f). Try again."
+    done
+    step sed_inplace 's/("warning": *)[0-9]+/\1'"$w"'/' "$config" || return 1
+    step sed_inplace 's/("failure": *)[0-9]+/\1'"$f"'/' "$config" || return 1
+    msg "  Updated config.json:"
+    grep -E '"(warning|failure|total_sessions)"' "$config" | sed 's/^/    /'
+    return 0
+}
+
