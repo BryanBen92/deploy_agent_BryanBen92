@@ -111,3 +111,93 @@ The script lists the deployed projects, you pick one, and then it checks `report
 - Logs are copied, not moved, because the app appends to them every session, so `reports/` keeps the full history.
 - An archive is never overwritten. If two archives get the same timestamp, `_1`, `_2` and so on is added to the name.
 
+## Ctrl+C and Ctrl+Z during deployment
+
+The script traps `SIGINT` (Ctrl+C) and `SIGTSTP` (Ctrl+Z) for the whole deploy feature. The traps are removed before the Python app starts, so they only protect the shell script and not the marking session.
+
+When either signal arrives, the script:
+
+1. prints that the deployment was interrupted,
+2. zips whatever exists of `attendance_tracker_<name>/` into `attendance_tracker_<name>_archive.zip`,
+3. deletes the incomplete directory so no half-made project is left behind (it only does this after the zip succeeded, so work is never lost),
+4. restores your previous project if you were overwriting one,
+5. exits cleanly with status 130.
+
+If you interrupt before anything was created (for example at the project name prompt), it says there is nothing to archive and creates no zip.
+
+### How to test it
+
+```bash
+./deploy_agent.sh deploy
+```
+
+Enter a name such as `sigtest`, choose `A`, enter `4`, answer `y` to the threshold question, then press **Ctrl+C** (or **Ctrl+Z**) at the "New warning threshold" prompt. Then check:
+
+```bash
+ls
+unzip -l attendance_tracker_sigtest_archive.zip
+```
+
+`ls` shows the `.zip` file but no `attendance_tracker_sigtest/` folder.
+
+### What the .zip contains
+
+It contains the project as it was at the moment of the interrupt. Interrupting at the threshold prompt gives:
+
+- `attendance_checker.py`
+- `Helpers/config.json`
+- `Helpers/assets.csv`
+- the empty `reports/` folder
+
+Interrupting earlier gives a smaller zip.
+
+## Testing
+
+Run these from the repository folder.
+
+**Deployed structure and permissions**
+
+```bash
+./deploy_agent.sh deploy
+find attendance_tracker_<name>
+ls -l attendance_tracker_<name>/attendance_checker.py attendance_tracker_<name>/Helpers/config.json
+```
+
+Expected: `attendance_checker.py`, `Helpers/assets.csv`, `Helpers/config.json` and `reports/` exist. The app shows `-rwxr-xr-x` and `config.json` shows `-rw-------`.
+
+**Roster and total_sessions**
+
+- Option A: `Helpers/assets.csv` has the header plus the number of rows you asked for, and `total_sessions` is 5.
+- Option B: all counts are 0, every email is unique, and `total_sessions` is 1.
+
+```bash
+cat attendance_tracker_<name>/Helpers/assets.csv
+grep total_sessions attendance_tracker_<name>/Helpers/config.json
+```
+
+**Threshold update and input validation**
+
+Answer `y`, then try empty input, letters, `150` and a warning lower than the failure value. Each should be rejected and asked again. After valid values, only the `warning` and `failure` lines change in `Helpers/config.json`.
+
+**Existing directory**
+
+Deploy the same name twice. Answering `n` aborts with nothing changed. Answering `y` replaces the project.
+
+**Archive**
+
+```bash
+./deploy_agent.sh archive
+find attendance_tracker_<name>/archives
+```
+
+Expected: one timestamped file in `archives/attendance/` and one in `archives/absent/`. If nobody was marked absent, the script reports that `absent.log` was skipped.
+
+**Missing tools**
+
+If `zip` or `python3` is not installed, the pre-flight check stops with a clear message before anything is created.
+
+## Notes
+
+- Each run of the application is one session. Running Feature 2 again on the same project adds another session, so `total_sessions` in `Helpers/config.json` would need to be raised by 1 first, otherwise the app prints a note that the prior session count does not match and percentages can go above 100%.
+- Generated projects, archives and zip files are listed in `.gitignore` so they are not committed.
+
