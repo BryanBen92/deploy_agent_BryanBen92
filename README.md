@@ -3,6 +3,8 @@
 Shell automation for the Student Attendance Tracker.
 `deploy_agent.sh` deploys the application, runs it, and archives its logs. While it is deploying, it handles Ctrl+C and Ctrl+Z cleanly.
 
+A demonstration of the project: https://youtu.be/mr0-39RCNO4?si=J_I1S27OqBoa9B50
+
 ## Repository layout
 
 ```
